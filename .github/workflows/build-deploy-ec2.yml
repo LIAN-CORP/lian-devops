@@ -1,0 +1,99 @@
+name: Reusable Build & Deploy to EC2
+
+on:
+  workflow_call: 
+    inputs:
+      image_name:
+        description: "Full name of the image"
+        required: true
+        type: string
+
+      service_name:
+        description: "Full service name on docker compose"
+        required: true
+        type: string
+
+      docker_context:
+        description: "Docker build context"
+        required: false
+        default: "."
+        type: string
+
+      deploy_path:
+        description: "EC2 Path where docker-compose.yml lives"
+        required: true
+        type: string
+
+      secrets:
+        EC2_HOST:
+          required: true
+        EC2_USERNAME:
+          required: true
+        EC2_KEY:
+          required: true
+        GHCR_TOKEN:
+          required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions: 
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate image tag
+        id: meta
+        run: |
+          echo "tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push image
+        uses: docker/build-push-actions@v5
+        with:
+          context: ${{ inputs.docker_context }}
+          push: true
+          tags: |
+            ghcr.io/${{ inputs.image_name }}:${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ inputs.image_name }}:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            set -e
+
+            cd ${{ inputs.deploy_path }}
+
+            echo "Deploying ${{ inputs.service_name }} with tag ${{ needs.build.outputs.image_tag }}"
+
+            export IMAGE_TAG=${{ needs.build.outputs.image_tag }}
+
+            docker login ghcr.io -u lian-corp -p ${{ secrets.GHCR_TOKEN }}
+
+            docker compose pull ${{ inputs.service_name }}
+            docker compose up -d ${{ inputs.service_name }}
+
+            docker ps | grep ${{ inputs.service_name }}
+                
