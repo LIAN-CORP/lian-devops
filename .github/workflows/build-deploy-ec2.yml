@@ -24,15 +24,15 @@ on:
         required: true
         type: string
 
-      secrets:
-        EC2_HOST:
-          required: true
-        EC2_USERNAME:
-          required: true
-        EC2_KEY:
-          required: true
-        GHCR_TOKEN:
-          required: true
+    secrets:
+      EC2_HOST:
+        required: true
+      EC2_USERNAME:
+        required: true
+      EC2_KEY:
+        required: true
+      GHCR_TOKEN:
+        required: true
 
 jobs:
   build:
